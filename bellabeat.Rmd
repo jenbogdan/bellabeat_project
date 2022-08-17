@@ -1,0 +1,346 @@
+---
+title: "bellabeat"
+author: "Jennifer Bogdan"
+date: '2022-08-15'
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Client: Bellabeat, a high-tech manufacturer of health-focused products
+for women. Urška Sršen, cofounder and Chief Creative Officer
+
+Objective: Focus on one of Bellabeat's products and analyze smart device
+data to gain insight into how consumers are using their smart devices.
+Identify insights to help guide marketing strategy for the company.
+
+1.  What are some trends in smart device usage?
+2.  How could these trends apply to Bellabeat customers?
+3.  How could these trends help influence Bellabeat marketing strategy?
+
+## Key Stakeholders
+
+* Urška Sršen — Bellabeat cofounder and Chief Creative Officer
+
+* Sando Mur — Bellabeat cofounder and key member of the Bellabeat executive team
+
+* Bellabeat marketing analytics team
+
+## Data Source
+
+Data: FitBit Fitness Tracker Data, 4.12.16 - 5.12.16, via Kaggle
+
+Contains personal fitness tracker data from 30 FitBit users. Data
+obtained from a distributed survey via Amazon Mechanical Turk between
+April 12,2016 and May 12, 2016
+
+The data includes information on number of steps, intensity of activity,
+sleep, heart rate, and calories. It is divided into per day, per hour,
+and per minute. The focus of this analysis is daily data, including sleep.
+
+RStudio was used to complete this analysis.
+
+## Limitations of the data
+
+* data consists of only 30 users over the course of 1 month
+* data does not include user age or gender
+* data is limited in scope compared to the data Bellabeat is already collecting, and not all users provided complete data
+
+Due to the small size and limited scope of the dataset, it may be difficult to draw firm conclusions, but useful insights were still able to be made. Since Bellabeat targets women specifically, the lack of gender identification in the dataset is significant.
+
+
+## Set-up Environment
+
+##### install and load packages
+
+```{r}
+install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+install.packages("janitor", repos = "http://cran.us.r-project.org")
+install.packages("stringi", repos = "http://cran.us.r-project.org")
+install.packages("lubridate", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(janitor)
+library(stringi)
+library(lubridate)
+```
+
+##### import the datasets
+
+```{r}
+dailyActivity <- read_csv("BellaBeat data/Fitabase Data 4.12.16-5.12.16/dailyActivity_merged.csv")
+dailyCalories <- read_csv("BellaBeat data/Fitabase Data 4.12.16-5.12.16/dailyCalories_merged.csv")
+dailyIntensities <- read_csv("BellaBeat data/Fitabase Data 4.12.16-5.12.16/dailyIntensities_merged.csv")
+dailySteps <- read_csv("BellaBeat data/Fitabase Data 4.12.16-5.12.16/dailySteps_merged.csv")
+dailySleep <- read_csv("BellaBeat data/Fitabase Data 4.12.16-5.12.16/sleepDay_merged.csv")
+```
+
+## Cleaning
+
+##### check structure and data types
+
+```{r}
+spec(dailyActivity)
+spec(dailyCalories)
+spec(dailyIntensities)
+spec(dailySteps)
+spec(dailySleep)
+```
+
+##### dates are wrong datatype, convert those first into a new, consistent variable
+
+```{r}
+dailyActivity$ActivityDate <- as.Date(dailyActivity$ActivityDate, "%m/%d/%Y")
+dailyCalories$ActivityDate <- as.Date(dailyCalories$ActivityDay, "%m/%d/%Y")
+dailyIntensities$ActivityDate <- as.Date(dailyIntensities$ActivityDay, "%m/%d/%Y")
+dailySteps$ActivityDate <- as.Date(dailySteps$ActivityDay, "%m/%d/%Y")
+dailySleep$SleepDate <- as.Date(dailySleep$SleepDay, "%m/%d/%Y")
+```
+
+##### drop the column with date in the wrong format, arrange by the new date, create new dataframe
+
+```{r}
+dailyActivity2 <- dailyActivity %>%
+  rename(ADate = ActivityDate) %>%
+  arrange(ADate)
+
+dailyCalories2 <- dailyCalories %>%
+  select(!ActivityDay) %>%
+  arrange(ActivityDate)
+
+dailyIntensities2 <- dailyIntensities %>%
+  select(!ActivityDay) %>%
+  arrange(ActivityDate)
+
+dailySteps2 <- dailySteps %>%
+  select(!ActivityDay) %>%
+  arrange(ActivityDate)
+
+dailySleep2 <- dailySleep %>%
+  select(!SleepDay) %>%
+  rename(ADate = SleepDate) %>%
+  arrange(ADate)
+```
+
+I checked to see if values in dailyActivity are duplicated values in the separate daily files: calories, steps, intensities, comparing summaries of each.  to save time, I only tested 3 variables from dailyIntensities. Since those 3 were a match, I assumed the rest were as well.
+
+##### compare summaries
+
+```{r}
+dailyActivity2 %>%
+  summarise(avg = mean(Calories), min = min(Calories), max = max(Calories), n = n())
+dailyCalories2 %>%
+  summarise(avg = mean(Calories), min = min(Calories), max = max(Calories), n = n())
+
+dailyActivity2 %>%
+  summarise(avg = mean(TotalSteps), min = min(TotalSteps), max = max(TotalSteps), n = n())
+dailySteps2 %>%
+  summarise(avg = mean(StepTotal), min = min(StepTotal), max = max(StepTotal), n = n())
+
+dailyActivity2 %>%
+  summarise(avg = mean(VeryActiveDistance), avg2 = mean(ModeratelyActiveDistance), avg3 = mean(LightActiveDistance), 
+  avg4 = mean(VeryActiveMinutes), avg5 = mean(FairlyActiveMinutes), avg6 = (LightlyActiveMinutes), avg7 = mean(SedentaryMinutes), n = n())
+dailyIntensities2 %>%
+  summarise(avg = mean(VeryActiveDistance), avg2 = mean(ModeratelyActiveDistance), avg3 = mean(LightActiveDistance), 
+  avg4 = mean(VeryActiveMinutes), avg5 = mean(FairlyActiveMinutes), avg6 = (LightlyActiveMinutes), avg7 = mean(SedentaryMinutes), n = n())
+```
+
+they all appear to be the same, so merge dailySleep2 to dailyActivity2 to have all daily data together, matched by id and date
+
+```{r}
+dailyAll2 <- merge(x = dailyActivity2, y = dailySleep2, by = c("Id", "ADate"), all = TRUE)
+dailyAll2 <- clean_names(dailyAll2)
+```
+
+##### find and remove 3 duplicate rows and columns not being used, create new dataframe
+
+```{r}
+get_dupes(dailyAll2, id, a_date)
+
+dailyAll3 <- distinct(dailyAll2) 
+dailyAll3 <- select(dailyAll3, -c(tracker_distance, total_distance, logged_activities_distance, very_active_distance, moderately_active_distance, light_active_distance, sedentary_active_distance, calories, total_sleep_records, total_time_in_bed))
+
+```
+
+##### investigate those with 0 total_steps
+
+```{r}
+no_steps_df <- filter(dailyAll3, total_steps == 0)
+```
+
+77 rows have 0 total_steps. all contain data in other columns, so they will not be removed.
+after cleaning, we have a total of 940 observations for analysis
+
+##### save cleaned data to a new csv file
+
+```{r}
+write.csv(dailyAll3,"dailyAll3.csv", row.names = FALSE)
+```
+
+## Analysis
+
+##### begin with a summary, put summary data into data.frame
+
+```{r}
+summary_dA3 <- data.frame(unclass(summary(dailyAll3)), check.names = FALSE)
+view(summary_dA3)
+```
+
+##### examine sleep data
+
+not all rows have sleep data, so count how many rows do
+
+```{r}
+nrow(subset(dailyAll3, total_minutes_asleep!="NA"))
+```
+
+ 410 with sleep data, 530 without
+ 410/940 = .436
+ Only 44% of the records include sleep data.
+
+
+##### calculate the avg sleep amount (omit NA rows)
+
+```{r}
+mean(dailyAll3$total_minutes_asleep, na.rm = TRUE) 
+```
+
+419.17/60 = 6.9 hours of sleep - consistent with generally recommended 7 hrs of sleep for adults
+
+
+Only 44% of the records include sleep data. The average amount of sleep among them was 6.9 hours. This is consistent with generally recommended 7 hrs of sleep for adults according to the [Mayo Clinic](https://www.mayoclinic.org/healthy-lifestyle/adult-health/expert-answers/how-many-hours-of-sleep-are-enough/faq-20057898). Since sufficient sleep is a large part of overall health, the recording of sleep data should be encouraged.
+
+
+
+##### examine total steps by id
+
+ mean total steps from summary table: 7638
+ min: 0
+ max: 36019
+
+##### how many are at or over the 10000 step benchmark?
+
+```{r}
+nrow(subset(dailyAll3, total_steps >= 10000)) # 303
+
+303/940 # .322
+```
+
+##### group by id and make a shortened version of id for better visual on the plot.
+
+```{r}
+dailyAll3 <- dailyAll3 %>%
+  group_by(id) %>%
+  mutate(ts_mean_id = mean(total_steps[total_steps > 0])) %>%
+  mutate(id2 = str_sub(id, 6, 10)) %>%
+  mutate(id2 = paste("x", id2, sep=""))
+```
+
+##### create a temp dataframe for plot values, selecting distinct id
+
+```{r}
+temp_df <- distinct(dailyAll3, ts_mean_id, id2 )
+```
+
+##### order the results from lowest to highest total, and plot
+
+```{r}
+tsplot <- ggplot(data=temp_df) + geom_col(orientation='y', mapping=aes(y = reorder(id2, -ts_mean_id), x = ts_mean_id, fill=ts_mean_id))
+tsplot + geom_vline(xintercept = 10000) + labs(title="Average Daily Steps by User", y="User ID", x="Average Steps", fill="Average Steps",
+       caption="Only last 5 digits of User ID shown. Based on Fitbit User Data, 2016-04-12 to 2016-5-12.") + 
+  annotate("text", x = 12000, y = "x14986", label = stringr::str_wrap("Benchmark: 10,000 steps", width = 12), fontface = 'italic')
+  
+# plot exported as avg_daily_steps.png
+```
+
+The average number of total steps per day was 7,638. This number is higher than the 3,000 to 4,000 steps per day for the average American, but lower than the recommended benchmark of 10,000 steps per day. ([Mayo Clinic](https://www.mayoclinic.org/healthy-lifestyle/fitness/in-depth/10000-steps/art-20317391)) Only 32% of the days met or exceeded 10,000 steps. These FitBit users are more active than the average American, but still fall short of the benchmark.
+
+There is a very wide disparity in daily step amounts, from a low of 0 to a high of 36,019. Daily amounts were generally consistent for each user on days with recorded data. This indicates that the FitBit users varied highly from barely active to highly active.
+
+##### examine total steps by day rather than id
+
+```{r}
+steps_by_day <- data.frame(a_date = dailyAll3$a_date, num_steps = dailyAll3$total_steps) %>%
+  arrange(a_date)
+```
+
+##### aggregate multiple entries for each date
+
+```{r}
+steps_by_day$a_date <- as.Date(steps_by_day$a_date)
+steps_by_day2 <- aggregate(steps_by_day["num_steps"], by=steps_by_day["a_date"], mean)
+```
+
+##### aggregate further by day of the week
+
+```{r}
+steps_by_day2$weekday <- wday(steps_by_day2$a_date, label=TRUE, abbr=FALSE) 
+steps_by_day2 <- aggregate(steps_by_day2["num_steps"], by=steps_by_day2["weekday"], mean)
+```
+
+##### plot the results
+
+```{r}
+tsplot3 <- ggplot(data = steps_by_day2) + geom_col(mapping=aes(x = weekday, y = num_steps, fill=num_steps))
+tsplot3 + labs(title="Average Steps per Weekday", x="", y="Average Steps", fill= "Average Steps",
+               caption="Based on Fitbit User Data, 2016-04-12 to 2016-5-12.") + coord_cartesian(ylim = c(5000, 9000)) + 
+  scale_x_discrete(guide = guide_axis(angle = -30))
+
+# plot exported as avg_steps_weekday.png
+```
+
+The average number of steps increases and decreases somewhat regularly during the week, with the lowest number on Sunday. It increases from Sunday through Tuesday, then decreases Tuesday through Thursday. It increases again from Thursday through Saturday.
+
+##### examine intensity levels
+
+##### find average time for each intensity level
+
+```{r}
+Very_a = round(mean(dailyAll3$very_active_minutes), digits = 2) #very active: 21.16
+fairly_a = round(mean(dailyAll3$fairly_active_minutes), digits = 2) #fairly active: 13.56
+lightly_a = round(mean(dailyAll3$lightly_active_minutes), digits = 2) #lightly active: 192.8
+sed = round(mean(dailyAll3$sedentary_minutes), digits = 2) #sedentary: 991.2
+
+temp_df3 <- data.frame(intensity_level = c("very active", "fairly active", "lightly active", "sedentary"),
+                          daily_avg = c(Very_a, fairly_a, lightly_a, sed))
+```
+
+##### order the intensity level from highest to lowest and plot
+
+```{r}
+temp_df4 <- temp_df3
+temp_df4$intensity_level <- as.character(temp_df4$intensity_level)
+temp_df4$intensity_level <- factor(temp_df4$intensity_level, levels = unique(temp_df4$intensity_level))
+
+tsplot2 <- ggplot(temp_df4) + geom_col(orientation = 'x', mapping = aes(x = intensity_level, y = daily_avg, fill=daily_avg))
+tsplot2 + labs(title="Average Daily Intensity Level", y="Average Minutes", x="Intensity Level", fill=("Average Minutes"),
+              caption="Based on Fitbit User Data, 2016-04-12 to 2016-5-12.")
+
+# plot exported as avg_intensity.png
+```
+
+The intensity level with the greatest number of minutes by far was sedentary at 991, which is over 16 hours a day. Lightly active was a distant second. This indicates that the majority of users are not doing any strenuous activity on a daily basis, and are probably wearing their device as they go about their regular day.
+
+## Act
+
+Although the FitBit dataset is small, beneficial insights can still be drawn. The data showed that most users are not regularly engaging in meaningful exercise, and are also inconsistent from day to day. Not enough of the users are taking advantage of non-activity tracking, such as sleep.
+
+BellaBeat's multiple smart devices already gather a wider variety of information for women users than FitBit, and all devices connect with the app. The app is the hub of information and the key piece that ties everything together for the user. 
+
+## Recommendations
+
+* Focus marketing efforts on metrics that FitBit doesn't collect, such as water intake via Spring.
+* Allow anyone interested, not just those that own BellaBeat smart devices, to use the app as an all-encompassing health and wellness tool.
+* Send a daily morning notification of goals and challenges for the day to encourage daily interaction with the app.
+* Push notifications to users with reminders to get up and get active, let them know their step count is low, their water intake is short, etc.
+* Allow users to refer a friend, and encourage friends to communicate with and challenge each other through the app.
+* Have recommended goals and reminders for activity, sleep, and other metrics, but also allow users to create their own.
+* Encourage use of the app and activity in general by incorporating positive, uplifting messages and reminders, as well as other incentives such as daily challenges or contests. Users could earn and accumulate points that give them discounts on BellaBeat products and membership.
+* Add a function for weight control including current weight, target weight, and BMI. Include reminders and incentives for daily weigh-ins and meeting goals. 
